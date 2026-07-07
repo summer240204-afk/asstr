@@ -10,16 +10,16 @@ bot = telebot.TeleBot(os.environ['TOKEN'])
 
 
 @bot.message_handler(commands=['start'])
-
 def main(message):
-    markup = types.ReplyKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton('АСТРОРАЗБОР'))
-    markup.add(types.InlineKeyboardButton('ПРИВОРОТ, МОРОК И Т.Д.'))
-    markup.add(types.InlineKeyboardButton('ПРАКТИКИ'))
-    markup.add(types.InlineKeyboardButton('КОД-ПРИВЯЗКА'))
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton('АСТРОРАЗБОР'))
+    markup.add(types.KeyboardButton('ПРИВОРОТ, МОРОК И Т.Д.'))
+    markup.add(types.KeyboardButton('ПРАКТИКИ'))
+    markup.add(types.KeyboardButton('КОД-ПРИВЯЗКА'))
 
-
-    bot.send_message(message.chat.id, text = f"""*Привет, {message.from_user.first_name}!* Этот бот поможет тебе узнать:
+    bot.send_message(
+        message.chat.id,
+        text=f"""*Привет, {message.from_user.first_name}!* Этот бот поможет тебе узнать:
 1. Ответ на вопрос при помощи хорарной астрологии;
 2. Подобрать личную практику специально для тебя по твоей дате рождения;
 3. Составить личный любовный код для партнера
@@ -27,14 +27,48 @@ def main(message):
 
 _(у тебя есть только одна бесплатная (первая) попытка, так что выбирай, что для тебя в приоритете)_
 
-Для продолжения выбери на кнопку ниже ⬇️""", parse_mode = 'Markdown', reply_markup=markup)
-    bot.register_next_step_handler(message, on_click)
+Для продолжения выбери кнопку ниже ⬇️""",
+        parse_mode='Markdown',
+        reply_markup=markup)
 
 
-
-
-
+@bot.message_handler(func=lambda message: True)
 def on_click(message):
+    @bot.callback_query_handler(func=lambda call: call.data == 'magic_read')
+    def magic_read(call):
+        bot.answer_callback_query(call.id)
+
+        main_menu = types.InlineKeyboardMarkup()
+        main_menu.add(types.InlineKeyboardButton(text='МОРОК', callback_data='МОРОК'))
+        main_menu.add(types.InlineKeyboardButton(text='ПРИВОРОТ', callback_data='ПРИВОРОТ'))
+        main_menu.add(types.InlineKeyboardButton(text='ПРИСУШКА', callback_data='ПРИСУШКА'))
+        main_menu.add(types.InlineKeyboardButton(text='ПРИВЯЗКА', callback_data='ПРИВЯЗКА'))
+        main_menu.add(types.InlineKeyboardButton(text='ОТВОРОТ/ОСТУДА', callback_data='ОТВОРОТ/ОСТУДА'))
+        main_menu.add(types.InlineKeyboardButton(text='РАССОРКА', callback_data='РАССОРКА'))
+
+        bot.send_message(
+            call.message.chat.id,
+            'Теперь выбери то, что тебе нужно:',
+            reply_markup=markup)
+
+    @bot.callback_query_handler(
+        func=lambda call: call.data in ['МОРОК', 'ПРИВОРОТ', 'ПРИСУШКА', 'ПРИВЯЗКА', 'ОТВОРОТ/ОСТУДА', 'РАССОРКА'])
+    def magic_choice(call):
+        bot.answer_callback_query(call.id)
+
+        names = {
+            'МОРОК': 'Морок',
+            'ПРИВОРОТ': 'Приворот',
+            'ПРИСУШКА': 'Присушка',
+            'ПРИВЯЗКА': 'Привязка',
+            'ОТВОРОТ/ОСТУДА': 'Отворот/остуда',
+            'РАССОРКА': 'Рассорка'
+        }
+
+        bot.send_message(
+            call.message.chat.id,
+            f'Ты выбрала: {names[call.data]}. Опиши свою ситуацию одним сообщением.')
+
     if message.text == 'АСТРОРАЗБОР':
         bot.send_message(message.chat.id, text = '''Перед тем как ты опишешь свою ситуацию прочитай текст ниже чтобы лучше понимать что такое хорарная астрология: 
 
@@ -55,31 +89,28 @@ def on_click(message):
 Для создания твоей индивидуальной астральной карты необходимо <b>твоя дата рождения и город</b> (из которого задаётся вопрос)
 ❗<u><b>️пиши всё в одном сообщении</b></u>❗️''', parse_mode = 'html')
 
+
     elif message.text == 'ПРИВОРОТ, МОРОК И Т.Д.':
-        bot.send_message(message.chat.id, text='''Перед тем как выбрать, что тебе нужно, ниже представлено краткое описание оказываемых нами услуг: 
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton(
+            text='Я ПРОЧИТАЛ(-А)',
+            callback_data='magic_read'))
 
+        bot.send_message(
+            message.chat.id,
+            text='''Перед тем как выбрать, что тебе нужно, ниже представлено краткое описание оказываемых нами услуг:
 
-        🔮<em><b>Морок</b></em>. Его ещё называют оморочка. Воздействие на теменную и головную чакру, с целью внушить жертве какую-то мысль, запутать, что-то внушить. Можно данным негативом менять планы, мнение, искажать реальность. В сказках колдуны часто путали мороком дорогу.
+    🔮<em><b>Морок</b></em>. Его ещё называют оморочка. Воздействие на теменную и головную чакру, с целью внушить жертве какую-то мысль, запутать, что-то внушить.
 
-        🔮<em><b>Приворот</b></em> – это энергоинформационная программа, направленная на привлечение какого-то лица к любовному контакту. Одна из наиболее частых магических воздействий, относящихся к любовной магии. Весь смысл приворота – это подчинение чужой воли, взять в плен чужую душу. Крепится он на чакрах:
-            – Половая – чтобы было сексуальное желание
-            – Теменная и головная – чтобы думал(а) и днем, и ночью, и не мог(ла) осмыслить, что с ним (ней) что-то не так
-            – Сердечная – чтобы тосковал(а), страдал(а).
+    🔮<em><b>Приворот</b></em> – это энергоинформационная программа, направленная на привлечение какого-то лица к любовному контакту.
 
-        🔮<em><b>Присушка</b></em> – разновидность приворота, с целью привлечь внимание конкретного человека. Забирают много жизненной энергии. Без предмета своего обожания больной может сохнуть, страдать, худеет. Буквально тает на глазах. 
+    🔮<em><b>Присушка</b></em> – разновидность приворота, с целью привлечь внимание конкретного человека.
 
-        🔮<em><b>Привязка</b></em> – тоже разновидность приворота, может использоваться для сохранности дружбы, рабочих отношений. Как и все привороты, это создание зависимости (сексуальной, энергетической, физической, психической, сексуальной).
+    🔮<em><b>Привязка</b></em> – тоже разновидность приворота, может использоваться для сохранности дружбы, рабочих отношений.
 
-        🔮<em><b>Отворот/остуда</b></em> – это энергоинформационная программа, направленная на разрыв какой-то связи между людьми. Ему могут подвергаться пары, партнеры по работе, подруги. Фактически портятся какие-то отношения. 
+    🔮<em><b>Отворот/остуда</b></em> – это энергоинформационная программа, направленная на разрыв какой-то связи между людьми.
 
-        🔮<em><b>Рассорка</b></em> – большие конфликты по мелочам в семье (так что после ссоры супруги думают, с чего вдруг они сорвались). Не видя друг друга, пара скучает, а как только встречаются, готовы друг друга испепелить по несущественным поводам.''',
-                         parse_mode='html')
-
-
-
-
-
-
+    🔮<em><b>Рассорка</b></em> – большие конфликты по мелочам в семье.''', parse_mode='html', reply_markup=markup)
 
 
 
