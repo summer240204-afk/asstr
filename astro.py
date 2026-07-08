@@ -1,6 +1,9 @@
 import telebot
 import time
 import os
+import json
+import re
+import html
 from telebot import types
 from telebot.apihelper import ApiTelegramException
 
@@ -11,8 +14,11 @@ admin_state = {}
 broadcast_data = {}
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, 'users.txt')
+PROMO_FILE = os.path.join(BASE_DIR, 'promo_items.json')
+REQUIRED_CHANNELS_FILE = os.path.join(BASE_DIR, 'required_channels.json')
 
 print('Файл users.txt используется тут:', USERS_FILE)
+
 
 def get_users():
     try:
@@ -41,7 +47,8 @@ def send_broadcast_message(user_id, data):
         bot.send_video(
             user_id,
             data['file_id'],
-            caption=data.get('caption'))
+            caption=data.get('caption')
+        )
 
 
 def run_broadcast(chat_id):
@@ -90,7 +97,8 @@ def run_broadcast(chat_id):
         f'Рассылка завершена ✅\n\n'
         f'Отправлено: {sent_count}\n'
         f'Ошибок: {error_count}\n'
-        f'Заблокировали бота: {blocked_count}')
+        f'Заблокировали бота: {blocked_count}'
+    )
 
 
 @bot.callback_query_handler(func=lambda call: call.data in ['send_broadcast_now', 'cancel_broadcast'])
@@ -153,10 +161,11 @@ def show_broadcast_preview(message):
             message.chat.id,
             broadcast_data['file_id'],
             caption=broadcast_data.get('caption'),
-            reply_markup=markup)
+            reply_markup=markup
+        )
 
 
-SPONSOR_CHANNELS = [
+DEFAULT_REQUIRED_CHANNELS = [
     {
         'title': 'МОЙ АСТРО КАНАЛ',
         'chat_id': '@tarotiz',
@@ -194,10 +203,51 @@ def save_user(user_id):
             file.write(user_id + '\n')
 
 
+def load_json_file(path, default):
+    try:
+        with open(path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        if isinstance(data, list):
+            return data
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    return default
+
+
+def save_json_file(path, data):
+    with open(path, 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def load_promo_items():
+    return load_json_file(PROMO_FILE, [])
+
+
+def save_promo_items(items):
+    save_json_file(PROMO_FILE, items)
+
+
+def load_required_channels():
+    data = load_json_file(REQUIRED_CHANNELS_FILE, [])
+    if data:
+        return data
+    return [dict(item) for item in DEFAULT_REQUIRED_CHANNELS]
+
+
+def save_required_channels(items):
+    save_json_file(REQUIRED_CHANNELS_FILE, items)
+
+
+PROMO_ITEMS = load_promo_items()
+REQUIRED_CHANNELS = load_required_channels()
+
+
 def get_unsubscribed_channels(user_id):
     unsubscribed_channels = []
 
-    for channel in SPONSOR_CHANNELS:
+    for channel in REQUIRED_CHANNELS:
         try:
             member = bot.get_chat_member(channel['chat_id'], user_id)
 
@@ -217,7 +267,174 @@ def send_typing_message(chat_id, text, delay=3, reply_markup=None, parse_mode='H
         chat_id,
         text=text,
         parse_mode=parse_mode,
-        reply_markup=reply_markup)
+        reply_markup=reply_markup
+    )
+
+
+def utf16_index_to_py_index(text, utf16_index):
+    current = 0
+
+    for index, char in enumerate(text):
+        if current >= utf16_index:
+            return index
+        current += len(char.encode('utf-16-le')) // 2
+
+    return len(text)
+
+
+def get_message_text_and_entities(message):
+    if getattr(message, 'text', None):
+        return message.text, message.entities or []
+    return getattr(message, 'caption', None) or '', message.caption_entities or []
+
+
+def parse_imported_list_message(message):
+    text, entities = get_message_text_and_entities(message)
+    if not text:
+        return []
+
+    lines = text.splitlines()
+
+    line_starts = []
+    pos = 0
+    for line in lines:
+        line_starts.append(pos)
+        pos += len(line) + 1
+
+    items = []
+
+    for index, line in enumerate(lines):
+        match = re.match(r'^\s*(\d+)\s*[\.\)]\s*(.+?)\s*$', line)
+        if not match:
+            continue
+
+        order = int(match.group(1))
+        title = match.group(2).strip()
+
+        line_start = line_starts[index]
+        line_end = line_start + len(line)
+        url = None
+
+        for entity in entities:
+            ent_start = utf16_index_to_py_index(text, entity.offset)
+            ent_end = utf16_index_to_py_index(text, entity.offset + entity.length)
+
+            if ent_start >= line_start and ent_start <= line_end:
+                if entity.type == 'text_link':
+                    url = entity.url
+                    break
+                elif entity.type == 'url':
+                    url = text[ent_start:ent_end]
+                    break
+
+        items.append({
+            'order': order,
+            'title': title,
+            'url': url,
+            'type': 'link'
+        })
+
+    items.sort(key=lambda x: x['order'])
+    return items
+
+
+def parse_required_channels_text(text):
+    channels = []
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        parts = [part.strip() for part in line.split('|')]
+
+        if len(parts) == 3:
+            title, chat_id, url = parts
+        elif len(parts) == 2:
+            title, url = parts
+            chat_id = url
+        else:
+            continue
+
+        if chat_id.startswith('https://t.me/'):
+            chat_id = '@' + chat_id.replace('https://t.me/', '').strip('/').lstrip('@')
+
+        channels.append({
+            'title': title,
+            'chat_id': chat_id,
+            'url': url
+        })
+
+    return channels
+
+
+def build_items_text(items):
+    items = sorted(items, key=lambda x: x.get('order', 10**9))
+
+    if not items:
+        return '<i>Список ссылок пока не загружен.</i>'
+
+    lines = ['<b>Ссылки:</b>']
+
+    for index, item in enumerate(items, 1):
+        title = html.escape(item.get('title', 'Без названия'))
+        url = item.get('url')
+
+        if url:
+            url = html.escape(url, quote=True)
+            lines.append(f'{index}. <a href="{url}">{title}</a>')
+        else:
+            lines.append(f'{index}. {title}')
+
+    return '\n'.join(lines)
+
+
+def send_long_html_message(chat_id, text):
+    max_len = 3500
+    chunks = []
+    current = ''
+
+    for line in text.split('\n'):
+        candidate = line if not current else current + '\n' + line
+
+        if len(candidate) > max_len:
+            if current:
+                chunks.append(current)
+            current = line
+        else:
+            current = candidate
+
+    if current:
+        chunks.append(current)
+
+    for chunk in chunks:
+        bot.send_message(
+            chat_id,
+            chunk,
+            parse_mode='HTML',
+            disable_web_page_preview=True
+        )
+
+
+def build_required_channels_markup():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+
+    for channel in REQUIRED_CHANNELS:
+        markup.add(
+            types.InlineKeyboardButton(
+                text=f"Подписаться: {channel['title']}",
+                url=channel['url']
+            )
+        )
+
+    markup.add(
+        types.InlineKeyboardButton(
+            text='✅ Я подписался(-ась), проверить ещё раз',
+            callback_data='subscribed'
+        )
+    )
+
+    return markup
 
 
 @bot.message_handler(commands=['start'])
@@ -239,6 +456,7 @@ def main(message):
     start_menu.add(types.InlineKeyboardButton(
         text='КОД-ПРИВЯЗКА',
         callback_data='code'))
+
     save_user(message.from_user.id)
     bot.send_message(
         message.chat.id,
@@ -263,6 +481,9 @@ def admin_panel(message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add('📢 Сделать рассылку')
+    markup.add('📥 Импорт ссылок')
+    markup.add('⚙️ Каналы с проверкой')
+    markup.add('📋 Показать ссылки')
     markup.add('📊 Статистика')
 
     bot.send_message(
@@ -520,143 +741,78 @@ def main_callback_handler(call):
 Спасибо за понимание!💘""",
             reply_markup=continue_menu)
 
-
     elif call.data == 'continue':
-
-        subscribed_menu = types.InlineKeyboardMarkup(row_width=2)
-
-        subscribed_menu.add(
-
-            types.InlineKeyboardButton(
-
-                text='🔮МОЙ КАНАЛ🔮',
-
-                url='https://t.me/tarotiz'),
-
-            types.InlineKeyboardButton(
-
-                text='WB НАХОДКИ',
-
-                url='https://t.me/wbmostril'))
-
-        subscribed_menu.add(
-
-            types.InlineKeyboardButton(
-
-                text='ПРОМОКОДЫ',
-
-                url='https://t.me/ziaaprom'),
-
-            types.InlineKeyboardButton(
-
-                text='АКЦИИ ЗЯ',
-
-                url='https://t.me/rrrteww'))
-
-        subscribed_menu.add(types.InlineKeyboardButton(
-
-            text='✅Я ПОДПИСАЛСЯ(-АСЬ)',
-
-            callback_data='subscribed'))
-
         bot.send_message(
             call.message.chat.id,
-            text="""<b><i>❗️ВНИМАНИЕ❗️
-Твой запрос на данный момент в обработке!</i></b>
-Потребуется немного времени, чтобы наша команда помогла тебе с ним! 
-<b>❗️ОТВЕТ ПОЛУЧАТ АБСОЛЮТНО ВСЕ, просто в порядке очереди, придется немного подождать</b>
+            text="""<b>Чтобы пройти дальше, подпишись на обязательные каналы ниже.</b>
 
-<i>Чтобы получить все бесплатно, тебе необходимо подписаться на наших партнёров: 
-(поймите, полностью бесплатно работать - в ущерб себе, поэтому мы просим лишь подписку💕)
-После автоматической проверки подписки в течении нескольких суток вам напишет одна из наших пяти коллег (просим вас запастись терпением, так как вас много, а нас всего пятеро)</i> 
+После подписки нажми кнопку проверки.
 
-❗️<b>БЕЗ ПОДПИСКИ НА ВСЕХ СПОНСОРОВ БОТ ВАМ НИЧЕГО НЕ ОТПРАВИТ❗️</b>""", parse_mode='HTML',
-            reply_markup=subscribed_menu)
+А ниже я пришлю весь список ссылок, он будет кликабельным прямо в сообщении.""",
+            parse_mode='HTML',
+            reply_markup=build_required_channels_markup()
+        )
 
+        if PROMO_ITEMS:
+            bot.send_message(
+                call.message.chat.id,
+                text='Вот полный список ссылок. Все названия кликабельные 👇',
+                parse_mode='HTML'
+            )
+            send_long_html_message(call.message.chat.id, build_items_text(PROMO_ITEMS))
+        else:
+            bot.send_message(
+                call.message.chat.id,
+                text='Список ссылок пока не загружен. Используй в админке кнопку "📥 Импорт ссылок".'
+            )
 
     elif call.data == 'subscribed':
-
         unsubscribed_channels = get_unsubscribed_channels(call.from_user.id)
 
         if unsubscribed_channels:
-
             not_subscribed_menu = types.InlineKeyboardMarkup(row_width=1)
 
             for channel in unsubscribed_channels:
                 not_subscribed_menu.add(types.InlineKeyboardButton(
-
                     text=f"Подписаться: {channel['title']}",
-
                     url=channel['url']
-
                 ))
 
             not_subscribed_menu.add(types.InlineKeyboardButton(
-
                 text='✅ Я подписался(-ась), проверить ещё раз',
-
                 callback_data='subscribed'
-
             ))
 
             bot.answer_callback_query(
-
                 call.id,
-
-                'Ты подписался(-ась) не на всех спонсоров 💔',
-
+                'Ты подписался(-ась) не на всех обязательных каналах 💔',
                 show_alert=True
-
             )
 
             bot.send_message(
-
                 call.message.chat.id,
-
                 text="""<b>Почти готово💘</b>
 
-Я проверила подписку и вижу, что ты подписался(-ась) <b>не на всех спонсоров</b>.
+Я проверила подписку и вижу, что ты подписался(-ась) <b>не на всех обязательных каналах</b>.
 Пожалуйста, подпишись на все каналы из списка ниже, а потом нажми кнопку:
 
-
-<b>✅ Я подписался(-ась), проверить ещё раз</b>
-
-
-    ⚠️ <i>Без подписки на всех спонсоров заявка не сможет попасть в очередь.</i>""",
-
+<b>✅ Я подписался(-ась), проверить ещё раз</b>""",
                 reply_markup=not_subscribed_menu,
-
                 parse_mode='HTML'
-
             )
-
             return
 
         bot.send_message(
-
             call.message.chat.id,
-
             text="""<b>Спасибо!💘</b>
 
 Твой запрос <b>принят</b> и поставлен в очередь на обработку.
-⏳<b>Примерное время ожидания ответа:</b> <u>до 48 часов 31 минуты</u>.
 
-<i>Я или одна из участниц моей команды обязательно вернёмся к твоему запросу, как только подойдёт твоя очередь.</i>
+<i>Я или одна из участниц моей команды обязательно вернемся к твоему запросу, как только подойдет твоя очередь.</i>
 
-
-⚠️<b><u>Пожалуйста, не отписывайся от спонсоров до получения ответа.</u></b>
-
-
-Если подписка будет отменена, бот может <b>не увидеть тебя в очереди</b>, и заявка автоматически потеряет приоритет :(
-🔮<b>Энергообмен очень важен</b>, поэтому мы просим лишь подписку на партнёров💕
-
-
-Если ты <b>не готов(-а) ждать бесплатный ответ</b> или хочешь получить помощь быстрее, ты можешь написать мне лично и заказать ритуал <b><u>на платной основе</u></b>.
-
-
-📩<b>МОИ КОНТАКТЫ: @tarotmarian</b>""",
-
-            parse_mode='HTML')
+⚠️<b><u>Пожалуйста, не отписывайся от обязательных каналов до получения ответа.</u></b>""",
+            parse_mode='HTML'
+        )
 
 
 @bot.message_handler(content_types=['photo', 'video'])
@@ -691,7 +847,56 @@ def get_user_text(message):
     save_user(message.from_user.id)
 
     if message.from_user.id == ADMIN_ID:
-        if message.text == '📢 Сделать рассылку':
+        admin_state_value = admin_state.get(ADMIN_ID)
+
+        if admin_state_value == 'waiting_import_list':
+            items = parse_imported_list_message(message)
+
+            if not items:
+                bot.send_message(
+                    message.chat.id,
+                    'Не нашла ни одной номерной строки со ссылкой. Перешли именно оригинальное сообщение со списком.'
+                )
+                return
+
+            PROMO_ITEMS.clear()
+            PROMO_ITEMS.extend(items)
+            save_promo_items(PROMO_ITEMS)
+
+            admin_state[ADMIN_ID] = None
+
+            bot.send_message(
+                message.chat.id,
+                f'Список ссылок успешно импортирован ✅\n\n'
+                f'Добавлено пунктов: {len(items)}'
+            )
+            return
+
+        if admin_state_value == 'waiting_required_channels':
+            channels = parse_required_channels_text(message.text)
+
+            if not channels:
+                bot.send_message(
+                    message.chat.id,
+                    'Не получилось разобрать каналы. Пришли строки в формате:\n'
+                    'Название | @username | https://t.me/username'
+                )
+                return
+
+            REQUIRED_CHANNELS.clear()
+            REQUIRED_CHANNELS.extend(channels)
+            save_required_channels(REQUIRED_CHANNELS)
+
+            admin_state[ADMIN_ID] = None
+
+            bot.send_message(
+                message.chat.id,
+                f'Каналы для проверки сохранены ✅\n\n'
+                f'Добавлено каналов: {len(channels)}'
+            )
+            return
+
+        if message.text in ['📢 Сделать рассылку', '/broadcast']:
             admin_state[ADMIN_ID] = 'waiting_broadcast'
 
             bot.send_message(
@@ -699,6 +904,38 @@ def get_user_text(message):
                 'Отправь текст, фото или видео для рассылки.\n\n'
                 'Если отправляешь фото или видео, можешь добавить подпись.'
             )
+            return
+
+        if message.text in ['📥 Импорт ссылок', '/importlist']:
+            admin_state[ADMIN_ID] = 'waiting_import_list'
+
+            bot.send_message(
+                message.chat.id,
+                'Перешли мне оригинальное сообщение со списком.\n\n'
+                'Важно: мне нужен именно пересланный пост/сообщение, где ссылки кликабельные.\n'
+                'Тогда я смогу вытащить их автоматически.'
+            )
+            return
+
+        if message.text in ['⚙️ Каналы с проверкой', '/setrequired']:
+            admin_state[ADMIN_ID] = 'waiting_required_channels'
+
+            bot.send_message(
+                message.chat.id,
+                'Пришли 1-2 строки в формате:\n'
+                'Название | @username | https://t.me/username\n\n'
+                'Пример:\n'
+                'МОЙ КАНАЛ | @tarotiz | https://t.me/tarotiz\n'
+                'МОЙ ВТОРОЙ КАНАЛ | @wbmostril | https://t.me/wbmostril'
+            )
+            return
+
+        if message.text == '📋 Показать ссылки':
+            bot.send_message(
+                message.chat.id,
+                'Текущий список ссылок 👇'
+            )
+            send_long_html_message(message.chat.id, build_items_text(PROMO_ITEMS))
             return
 
         if message.text == '📊 Статистика':
