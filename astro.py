@@ -167,21 +167,25 @@ def show_broadcast_preview(message):
 
 DEFAULT_REQUIRED_CHANNELS = [
     {
+        'order': 10,
         'title': 'МОЙ АСТРО КАНАЛ',
         'chat_id': '@tarotiz',
         'url': 'https://t.me/tarotiz'
     },
     {
+        'order': 20,
         'title': 'WB НАХОДКИ',
         'chat_id': '@wbmostril',
         'url': 'https://t.me/wbmostril'
     },
     {
+        'order': 30,
         'title': 'ПРОМОКОДЫ',
         'chat_id': '@ziaaprom',
         'url': 'https://t.me/ziaaprom'
     },
     {
+        'order': 40,
         'title': 'АКЦИИ ЗЯ',
         'chat_id': '@rrrteww',
         'url': 'https://t.me/rrrteww'
@@ -231,9 +235,17 @@ def save_promo_items(items):
 
 def load_required_channels():
     data = load_json_file(REQUIRED_CHANNELS_FILE, [])
-    if data:
-        return data
-    return [dict(item) for item in DEFAULT_REQUIRED_CHANNELS]
+
+    if not data:
+        return [dict(item) for item in DEFAULT_REQUIRED_CHANNELS]
+
+    normalized = []
+    for index, item in enumerate(data, 1):
+        normalized_item = dict(item)
+        normalized_item.setdefault('order', index * 10)
+        normalized.append(normalized_item)
+
+    return normalized
 
 
 def save_required_channels(items):
@@ -348,7 +360,15 @@ def parse_required_channels_text(text):
 
         parts = [part.strip() for part in line.split('|')]
 
-        if len(parts) == 3:
+        order = (len(channels) + 1) * 10
+
+        if len(parts) == 4:
+            order_text, title, chat_id, url = parts
+            try:
+                order = int(order_text)
+            except ValueError:
+                continue
+        elif len(parts) == 3:
             title, chat_id, url = parts
         elif len(parts) == 2:
             title, url = parts
@@ -360,6 +380,7 @@ def parse_required_channels_text(text):
             chat_id = '@' + chat_id.replace('https://t.me/', '').strip('/').lstrip('@')
 
         channels.append({
+            'order': order,
             'title': title,
             'chat_id': chat_id,
             'url': url
@@ -388,6 +409,43 @@ def build_items_text(items):
 
     return '\n'.join(lines)
 
+def build_all_links_text():
+    merged = []
+
+    for channel in REQUIRED_CHANNELS:
+        merged.append({
+            'order': channel.get('order', 10**9),
+            'title': channel.get('title', 'Без названия'),
+            'url': channel.get('url'),
+            'kind': 'required'
+        })
+
+    for item in PROMO_ITEMS:
+        merged.append({
+            'order': item.get('order', 10**9),
+            'title': item.get('title', 'Без названия'),
+            'url': item.get('url'),
+            'kind': 'promo'
+        })
+
+    merged.sort(key=lambda x: x['order'])
+
+    if not merged:
+        return '<i>Список ссылок пока не загружен.</i>'
+
+    lines = ['<b>Ссылки:</b>']
+
+    for index, item in enumerate(merged, 1):
+        title = html.escape(item['title'])
+        url = item.get('url')
+        prefix = '🔒 ' if item['kind'] == 'required' else ''
+
+        if url:
+            lines.append(f'{index}. {prefix}<a href="{html.escape(url, quote=True)}">{title}</a>')
+        else:
+            lines.append(f'{index}. {prefix}{title}')
+
+    return '\n'.join(lines)
 
 def send_long_html_message(chat_id, text):
     max_len = 3500
@@ -752,14 +810,14 @@ def main_callback_handler(call):
             reply_markup=continue_menu)
 
 
-    elif call.data == 'continue':
 
+    elif call.data == 'continue':
 
         bot.send_message(
 
             call.message.chat.id,
 
-            text="""<b>❗️ВНИМАНИЕ❗️</b>
+            text=f"""<b>❗️ВНИМАНИЕ❗️</b>
 
 Твой запрос на данный момент <b>в обработке</b>!
 Потребуется <i>немного времени</i>, чтобы наша команда помогла тебе с ним.
@@ -772,40 +830,16 @@ def main_callback_handler(call):
 После <u>автоматической проверки подписки</u> в течение нескольких суток вам напишет <b>одна из наших пяти коллег</b>.
 <i>Просим вас запастись терпением, так как вас много, а нас всего пятеро.</i>
 
-<b>❗️БЕЗ ПОДПИСКИ НА ВСЕХ СПОНСОРОВ БОТ ВАМ НИЧЕГО НЕ ОТПРАВИТ❗️</b>""",
+<b>❗️БЕЗ ПОДПИСКИ НА ВСЕХ СПОНСОРОВ БОТ ВАМ НИЧЕГО НЕ ОТПРАВИТ❗️</b>
+
+
+    {build_all_links_text()}""",
 
             parse_mode='HTML',
 
-            reply_markup=build_required_channels_markup()
+            disable_web_page_preview=True
 
         )
-
-
-        if call.from_user.id == ADMIN_ID:
-
-            if PROMO_ITEMS:
-
-                bot.send_message(
-
-                    ADMIN_ID,
-
-                    text='Вот полный список ссылок. Все названия кликабельные 👇',
-
-                    parse_mode='HTML'
-
-                )
-
-                send_long_html_message(ADMIN_ID, build_items_text(PROMO_ITEMS))
-
-            else:
-
-                bot.send_message(
-
-                    ADMIN_ID,
-
-                    'Список ссылок пока не загружен. Используй в админке кнопку "📥 Импорт ссылок".'
-
-                )
 
     elif call.data == 'subscribed':
         unsubscribed_channels = get_unsubscribed_channels(call.from_user.id)
@@ -907,7 +941,7 @@ def get_user_text(message):
                 'Действие отменено ❌\n\nСостояние сброшено, можешь выбрать новую команду.'
             )
             return
-        
+
         if message.text == '🗑 Очистить список ссылок':
             PROMO_ITEMS.clear()
             save_promo_items(PROMO_ITEMS)
