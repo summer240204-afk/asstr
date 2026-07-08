@@ -485,6 +485,8 @@ def admin_panel(message):
     markup.add('⚙️ Каналы с проверкой')
     markup.add('📋 Показать ссылки')
     markup.add('📊 Статистика')
+    markup.add('🗑 Очистить список ссылок')
+    markup.add('♻️ Сбросить 4 проверочных канала')
     markup.add('❌ Отмена')
 
     bot.send_message(
@@ -905,7 +907,27 @@ def get_user_text(message):
                 'Действие отменено ❌\n\nСостояние сброшено, можешь выбрать новую команду.'
             )
             return
+        
+        if message.text == '🗑 Очистить список ссылок':
+            PROMO_ITEMS.clear()
+            save_promo_items(PROMO_ITEMS)
 
+            bot.send_message(
+                message.chat.id,
+                'Список ссылок очищен ✅\n\nТеперь там нет ни одной промо-ссылки.'
+            )
+            return
+
+        if message.text == '♻️ Сбросить 4 проверочных канала':
+            REQUIRED_CHANNELS.clear()
+            REQUIRED_CHANNELS.extend([dict(item) for item in DEFAULT_REQUIRED_CHANNELS])
+            save_required_channels(REQUIRED_CHANNELS)
+
+            bot.send_message(
+                message.chat.id,
+                'Проверочные каналы сброшены ✅\n\nОсталось только 4 стандартных канала.'
+            )
+            return
         if admin_state_value == 'waiting_import_list':
             items = parse_imported_list_message(message)
 
