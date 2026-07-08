@@ -808,39 +808,49 @@ def main_callback_handler(call):
 Спасибо за понимание!💘""",
             reply_markup=continue_menu)
 
-
-
-
     elif call.data == 'continue':
-    check_subscription_menu = types.InlineKeyboardMarkup()
 
-    check_subscription_menu.add(types.InlineKeyboardButton(
-        text='✅ Я подписался(-ась)',
-        callback_data='subscribed'
-    ))
+        check_subscription_menu = types.InlineKeyboardMarkup()
 
-    bot.send_message(
-        call.message.chat.id,
-        text=f"""<b>❗️ВНИМАНИЕ❗️</b>
+        check_subscription_menu.add(types.InlineKeyboardButton(
 
-Твой запрос на данный момент <b>в обработке</b>!
-Потребуется <i>немного времени</i>, чтобы наша команда помогла тебе с ним.
+            text='✅ Я подписался(-ась)',
 
-<b>❗️ОТВЕТ ПОЛУЧАТ АБСОЛЮТНО ВСЕ</b>, просто <u>в порядке очереди</u>, поэтому придется немного подождать.
+            callback_data='subscribed'
 
-Чтобы получить все <b>бесплатно</b>, тебе необходимо подписаться на наших партнёров
-<i>(поймите, полностью бесплатно работать — в ущерб себе, поэтому мы просим лишь подписку 💕)</i>
+        ))
 
-{build_all_links_text()}
+        bot.send_message(
 
-После <u>автоматической проверки подписки</u> в течение нескольких суток вам напишет <b>одна из наших пяти коллег</b>.
-<i>Просим вас запастись терпением, так как вас много, а нас всего пятеро.</i>
+            call.message.chat.id,
 
-<b>❗️БЕЗ ПОДПИСКИ НА ВСЕХ СПОНСОРОВ БОТ ВАМ НИЧЕГО НЕ ОТПРАВИТ❗️</b>""",
-        parse_mode='HTML',
-        disable_web_page_preview=True,
-        reply_markup=check_subscription_menu
-    )
+            text=f"""<b>❗️ВНИМАНИЕ❗️</b>
+
+    Твой запрос на данный момент <b>в обработке</b>!
+    Потребуется <i>немного времени</i>, чтобы наша команда помогла тебе с ним.
+
+    <b>❗️ОТВЕТ ПОЛУЧАТ АБСОЛЮТНО ВСЕ</b>, просто <u>в порядке очереди</u>, поэтому придется немного подождать.
+
+    Чтобы получить все <b>бесплатно</b>, тебе необходимо подписаться на наших партнёров
+    <i>(поймите, полностью бесплатно работать — в ущерб себе, поэтому мы просим лишь подписку 💕)</i>
+
+
+    {build_all_links_text()}
+
+
+    После <u>автоматической проверки подписки</u> в течение нескольких суток вам напишет <b>одна из наших пяти коллег</b>.
+    <i>Просим вас запастись терпением, так как вас много, а нас всего пятеро.</i>
+
+    <b>❗️БЕЗ ПОДПИСКИ НА ВСЕХ СПОНСОРОВ БОТ ВАМ НИЧЕГО НЕ ОТПРАВИТ❗️</b>""",
+
+            parse_mode='HTML',
+
+            disable_web_page_preview=True,
+
+            reply_markup=check_subscription_menu
+
+        )
+
 
     elif call.data == 'subscribed':
         unsubscribed_channels = get_unsubscribed_channels(call.from_user.id)
