@@ -1,18 +1,22 @@
 import telebot
 import time
+import os
 from telebot import types
 from telebot.apihelper import ApiTelegramException
-
 
 bot = telebot.TeleBot('8842648661:AAGPFrR1OTTFXzYwgLAF4LKYVKOCTGWTrQM')
 ADMIN_ID = 1244731064
 
 admin_state = {}
 broadcast_data = {}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+USERS_FILE = os.path.join(BASE_DIR, 'users.txt')
+
+print('Файл users.txt используется тут:', USERS_FILE)
 
 def get_users():
     try:
-        with open('users.txt', 'r', encoding='utf-8') as file:
+        with open(USERS_FILE, 'r', encoding='utf-8') as file:
             users = file.read().splitlines()
 
         users = list(set(users))
@@ -20,6 +24,7 @@ def get_users():
 
     except FileNotFoundError:
         return []
+
 
 def send_broadcast_message(user_id, data):
     if data['type'] == 'text':
@@ -37,6 +42,7 @@ def send_broadcast_message(user_id, data):
             user_id,
             data['file_id'],
             caption=data.get('caption'))
+
 
 def run_broadcast(chat_id):
     users = get_users()
@@ -86,6 +92,7 @@ def run_broadcast(chat_id):
         f'Ошибок: {error_count}\n'
         f'Заблокировали бота: {blocked_count}')
 
+
 @bot.callback_query_handler(func=lambda call: call.data in ['send_broadcast_now', 'cancel_broadcast'])
 def broadcast_callback(call):
     if call.from_user.id != ADMIN_ID:
@@ -115,6 +122,7 @@ def broadcast_callback(call):
 
         admin_state[ADMIN_ID] = None
         broadcast_data.clear()
+
 
 def show_broadcast_preview(message):
     markup = types.InlineKeyboardMarkup()
@@ -147,6 +155,7 @@ def show_broadcast_preview(message):
             caption=broadcast_data.get('caption'),
             reply_markup=markup)
 
+
 SPONSOR_CHANNELS = [
     {
         'title': 'МОЙ АСТРО КАНАЛ',
@@ -169,9 +178,11 @@ SPONSOR_CHANNELS = [
         'url': 'https://t.me/rrrteww'
     }
 ]
+
+
 def save_user(user_id):
     try:
-        with open('users.txt', 'r', encoding='utf-8') as file:
+        with open(USERS_FILE, 'r', encoding='utf-8') as file:
             users = file.read().splitlines()
     except FileNotFoundError:
         users = []
@@ -179,7 +190,7 @@ def save_user(user_id):
     user_id = str(user_id)
 
     if user_id not in users:
-        with open('users.txt', 'a', encoding='utf-8') as file:
+        with open(USERS_FILE, 'a', encoding='utf-8') as file:
             file.write(user_id + '\n')
 
 
@@ -197,6 +208,7 @@ def get_unsubscribed_channels(user_id):
             unsubscribed_channels.append(channel)
 
     return unsubscribed_channels
+
 
 def send_typing_message(chat_id, text, delay=3, reply_markup=None, parse_mode='HTML'):
     bot.send_chat_action(chat_id, 'typing')
@@ -243,6 +255,7 @@ def main(message):
         parse_mode='HTML',
         reply_markup=start_menu)
 
+
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
     if message.from_user.id != ADMIN_ID:
@@ -260,6 +273,8 @@ def admin_panel(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def main_callback_handler(call):
+    save_user(call.from_user.id)
+
     if call.data in ['send_broadcast_now', 'cancel_broadcast']:
         return
 
@@ -301,8 +316,8 @@ def main_callback_handler(call):
 🔮<b><i>Рассорка</i></b> — большие конфликты по мелочам в семье, так что после ссоры супруги думают, с чего вдруг они сорвались. Не видя друг друга, пара скучает, а как только встречаются, готовы друг друга испепелить по несущественным поводам.
 
 🔮<b><i>Дьявольская красота</i></b> — это ритуал для раскрытия личной магнетики, харизмы и уверенности в себе. Он помогает принять свою красоту, почувствовать внутреннюю силу и начать проявляться ярче, благодаря чему человек становится более заметным, притягательным и уверенным в общении.""",
-    parse_mode='HTML',
-    reply_markup=read_menu)
+            parse_mode='HTML',
+            reply_markup=read_menu)
 
     elif call.data == 'magic_read':
         magic_choice_menu = types.InlineKeyboardMarkup()
@@ -555,7 +570,7 @@ def main_callback_handler(call):
 (поймите, полностью бесплатно работать - в ущерб себе, поэтому мы просим лишь подписку💕)
 После автоматической проверки подписки в течении нескольких суток вам напишет одна из наших пяти коллег (просим вас запастись терпением, так как вас много, а нас всего пятеро)</i> 
 
-❗️<b>БЕЗ ПОДПИСКИ НА ВСЕХ СПОНСОРОВ БОТ ВАМ НИЧЕГО НЕ ОТПРАВИТ❗️</b>""",parse_mode='HTML',
+❗️<b>БЕЗ ПОДПИСКИ НА ВСЕХ СПОНСОРОВ БОТ ВАМ НИЧЕГО НЕ ОТПРАВИТ❗️</b>""", parse_mode='HTML',
             reply_markup=subscribed_menu)
 
 
@@ -599,7 +614,7 @@ def main_callback_handler(call):
                 call.message.chat.id,
 
                 text="""<b>Почти готово💘</b>
-                
+
 Я проверила подписку и вижу, что ты подписался(-ась) <b>не на всех спонсоров</b>.
 Пожалуйста, подпишись на все каналы из списка ниже, а потом нажми кнопку:
 
@@ -670,8 +685,11 @@ def handle_admin_media(message):
 
     show_broadcast_preview(message)
 
+
 @bot.message_handler(content_types=['text'])
 def get_user_text(message):
+    save_user(message.from_user.id)
+
     if message.from_user.id == ADMIN_ID:
         if message.text == '📢 Сделать рассылку':
             admin_state[ADMIN_ID] = 'waiting_broadcast'
