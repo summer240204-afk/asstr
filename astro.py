@@ -299,6 +299,11 @@ def get_message_text_and_entities(message):
         return message.text, message.entities or []
     return getattr(message, 'caption', None) or '', message.caption_entities or []
 
+def parse_order_value(value):
+    try:
+        return float(str(value).replace(',', '.'))
+    except ValueError:
+        return None
 
 def parse_imported_list_message(message):
     text, entities = get_message_text_and_entities(message)
@@ -316,11 +321,14 @@ def parse_imported_list_message(message):
     items = []
 
     for index, line in enumerate(lines):
-        match = re.match(r'^\s*(\d+)\s*[\.\)]\s*(.+?)\s*$', line)
+        match = re.match(r'^\s*(\d+(?:[.,]\d+)?)\s*[\.\)]\s*(.+?)\s*$', line)
         if not match:
             continue
 
-        order = int(match.group(1))
+        order = parse_order_value(match.group(1))
+        if order is None:
+            continue
+
         title = match.group(2).strip()
 
         line_start = line_starts[index]
@@ -360,19 +368,22 @@ def parse_required_channels_text(text):
 
         parts = [part.strip() for part in line.split('|')]
 
-        order = (len(channels) + 1) * 10
+        order = float(len(channels) + 1)
 
         if len(parts) == 4:
             order_text, title, chat_id, url = parts
-            try:
-                order = int(order_text)
-            except ValueError:
+            parsed_order = parse_order_value(order_text)
+            if parsed_order is None:
                 continue
+            order = parsed_order
+
         elif len(parts) == 3:
             title, chat_id, url = parts
+
         elif len(parts) == 2:
             title, url = parts
             chat_id = url
+
         else:
             continue
 
@@ -416,16 +427,14 @@ def build_all_links_text():
         merged.append({
             'order': channel.get('order', 10**9),
             'title': channel.get('title', 'Без названия'),
-            'url': channel.get('url'),
-            'kind': 'required'
+            'url': channel.get('url')
         })
 
     for item in PROMO_ITEMS:
         merged.append({
             'order': item.get('order', 10**9),
             'title': item.get('title', 'Без названия'),
-            'url': item.get('url'),
-            'kind': 'promo'
+            'url': item.get('url')
         })
 
     merged.sort(key=lambda x: x['order'])
@@ -438,12 +447,11 @@ def build_all_links_text():
     for index, item in enumerate(merged, 1):
         title = html.escape(item['title'])
         url = item.get('url')
-        prefix = '🔒 ' if item['kind'] == 'required' else ''
 
         if url:
-            lines.append(f'{index}. {prefix}<a href="{html.escape(url, quote=True)}">{title}</a>')
+            lines.append(f'{index}. <a href="{html.escape(url, quote=True)}">{title}</a>')
         else:
-            lines.append(f'{index}. {prefix}{title}')
+            lines.append(f'{index}. {title}')
 
     return '\n'.join(lines)
 
@@ -1035,11 +1043,12 @@ def get_user_text(message):
 
             bot.send_message(
                 message.chat.id,
-                'Пришли 1-2 строки в формате:\n'
-                'Название | @username | https://t.me/username\n\n'
+                'Пришли строки в формате:\n'
+                'Порядок | Название | @username | https://t.me/username\n\n'
                 'Пример:\n'
-                'МОЙ КАНАЛ | @tarotiz | https://t.me/tarotiz\n'
-                'МОЙ ВТОРОЙ КАНАЛ | @wbmostril | https://t.me/wbmostril'
+                '1 | МОЙ КАНАЛ | @tarotiz | https://t.me/tarotiz\n'
+                '2.5 | МОЙ ВТОРОЙ КАНАЛ | @wbmostril | https://t.me/wbmostril\n'
+                '3 | МОЙ ТРЕТИЙ КАНАЛ | @ziaaprom | https://t.me/ziaaprom'
             )
             return
 
