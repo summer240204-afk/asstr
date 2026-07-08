@@ -749,30 +749,61 @@ def main_callback_handler(call):
 Спасибо за понимание!💘""",
             reply_markup=continue_menu)
 
+
     elif call.data == 'continue':
+
+
         bot.send_message(
+
             call.message.chat.id,
-            text="""<b>Чтобы пройти дальше, подпишись на обязательные каналы ниже.</b>
 
-После подписки нажми кнопку проверки.
+            text="""<b>❗️ВНИМАНИЕ❗️</b>
 
-А ниже я пришлю весь список ссылок, он будет кликабельным прямо в сообщении.""",
+Твой запрос на данный момент <b>в обработке</b>!
+Потребуется <i>немного времени</i>, чтобы наша команда помогла тебе с ним.
+
+<b>❗️ОТВЕТ ПОЛУЧАТ АБСОЛЮТНО ВСЕ</b>, просто <u>в порядке очереди</u>, поэтому придется немного подождать.
+
+Чтобы получить все <b>бесплатно</b>, тебе необходимо подписаться на наших партнёров
+<i>(поймите, полностью бесплатно работать — в ущерб себе, поэтому мы просим лишь подписку 💕)</i>
+
+После <u>автоматической проверки подписки</u> в течение нескольких суток вам напишет <b>одна из наших пяти коллег</b>.
+<i>Просим вас запастись терпением, так как вас много, а нас всего пятеро.</i>
+
+<b>❗️БЕЗ ПОДПИСКИ НА ВСЕХ СПОНСОРОВ БОТ ВАМ НИЧЕГО НЕ ОТПРАВИТ❗️</b>""",
+
             parse_mode='HTML',
+
             reply_markup=build_required_channels_markup()
+
         )
 
-        if PROMO_ITEMS:
-            bot.send_message(
-                call.message.chat.id,
-                text='Вот полный список ссылок. Все названия кликабельные 👇',
-                parse_mode='HTML'
-            )
-            send_long_html_message(call.message.chat.id, build_items_text(PROMO_ITEMS))
-        else:
-            bot.send_message(
-                call.message.chat.id,
-                text='Список ссылок пока не загружен. Используй в админке кнопку "📥 Импорт ссылок".'
-            )
+
+        if call.from_user.id == ADMIN_ID:
+
+            if PROMO_ITEMS:
+
+                bot.send_message(
+
+                    ADMIN_ID,
+
+                    text='Вот полный список ссылок. Все названия кликабельные 👇',
+
+                    parse_mode='HTML'
+
+                )
+
+                send_long_html_message(ADMIN_ID, build_items_text(PROMO_ITEMS))
+
+            else:
+
+                bot.send_message(
+
+                    ADMIN_ID,
+
+                    'Список ссылок пока не загружен. Используй в админке кнопку "📥 Импорт ссылок".'
+
+                )
 
     elif call.data == 'subscribed':
         unsubscribed_channels = get_unsubscribed_channels(call.from_user.id)
